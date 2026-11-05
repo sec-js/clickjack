@@ -3,7 +3,7 @@
 <img src="images/pc3.PNG" width="400">
 
 # Installation
-    1. git clone https://https://github.com/machine1337/clickjack
+    1. git clone https://github.com/machine1337/clickjack
     2. cd clickjack && chmod +x clickjack.sh
     
 # Usage
