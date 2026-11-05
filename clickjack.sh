@@ -18,6 +18,55 @@ CNC='\033[1;38;5;051m'
 #https://instagram.com/invisibleclay100
 #https://twitter.com/whoami4041
 #https://www.youtube.com/channel/UCC_aPnmV_zGfdwktCFE9cPQ
+
+# Open a file with whatever opener exists on this platform.
+open_file(){
+    local target="$1"
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$target" >/dev/null 2>&1 &
+    elif command -v open >/dev/null 2>&1; then
+        open "$target"
+    elif command -v start >/dev/null 2>&1; then
+        start "$target"
+    else
+        echo -e "${YELLOW}[*] No opener found for this platform. Open manually: ${NC}$target"
+    fi
+}
+
+# Escape a string for safe use inside a sed 's|...|...|' replacement.
+sed_escape(){
+    printf '%s' "$1" | sed -e 's/[\&|]/\\&/g'
+}
+
+# Fetch headers for a URL and print "VULNERABLE" or "NOT VULNERABLE".
+# Returns 0 if vulnerable, 1 if not, 2 if the request itself failed.
+check_clickjacking(){
+    local target="$1"
+    local headers
+    headers=$(curl -s -L -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/81.0" --connect-timeout 5 --head "$target")
+
+    if [ -z "$headers" ]; then
+        return 2
+    fi
+
+    # X-Frame-Options present at all => treated as protected (DENY/SAMEORIGIN
+    # are the only meaningful values in practice; ALLOW-FROM is legacy/ignored
+    # by modern browsers, and ALLOWALL isn't a real directive, so its mere
+    # presence still indicates the site owner is trying to opt in).
+    if echo "$headers" | grep -qi '^X-Frame-Options:'; then
+        return 1
+    fi
+
+    # Content-Security-Policy only protects against framing if it actually
+    # sets frame-ancestors; a CSP with no frame-ancestors directive leaves
+    # clickjacking wide open, so check the directive, not just header presence.
+    if echo "$headers" | grep -i '^Content-Security-Policy:' | grep -qi 'frame-ancestors'; then
+        return 1
+    fi
+
+    return 0
+}
+
 function banner(){
 echo -e ${CP}"     ______ _     ___ ____ _  __         _ _  ____ _  _______ ______       #"
 echo -e ${CP}"    / / ___| |   |_ _/ ___| |/ /        | / |/ ___| |/ /___ /|  _ \ \      #"
@@ -36,43 +85,42 @@ function single_url(){
 clear
 banner
 echo -e -n ${BLUE}"\n[+] Enter domain name (e.g http|https://target.com/) : "
-read  url
-check=$(curl -s -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/81.0" --connect-timeout 5 --head $url ) 
-echo "$check" >> temp.txt
-sami=$(cat temp.txt | egrep -w 'X-Frame-Options|Content-Security-Policy|x-frame-options|content-security-policy:' )
+read url
 
+check_clickjacking "$url"
+result=$?
 
-if [[ $sami = '' ]];
-then
+if [ "$result" -eq 2 ]; then
+echo -e -n "\n[ ! ] ${NC}$url ${YELLOW}COULD NOT BE REACHED \n"
+elif [ "$result" -eq 0 ]; then
 echo -e -n "\n[ ✔ ] ${NC}$url ${RED}VULNERABLE \n"
 sleep 1
 echo -e -n ${BLUE}"\nDo U Want To Open POC In Browser: [y/n]: "
 read back_press
-if [ $back_press = "y"  ]; then
+if [ "$back_press" = "y" ]; then
 if [ -f vuln.html ]; then
-#echo -e -n ${RED}"[*] Old Vuln.html File Found! Removing Old File! " 
 rm vuln.html
 fi
-if [ -f poc.html ];
-then
-cat poc.html | sed "s|vuln|$url|" >> vuln.html
-open vuln.html
-rm temp.txt
-
+if [ -f poc.html ]; then
+sed "s|vuln|$(sed_escape "$url")|" poc.html > vuln.html
+open_file vuln.html
 else
- echo -e -n ${RED}"[ X ] POC File Not Found! Exiting"    
- exit
+ echo -e -n ${RED}"[ X ] POC File Not Found! Exiting"
+ exit 1
 fi
-elif [ $back_press = "n" ]; then
+elif [ "$back_press" = "n" ]; then
+if [ -f poc.html ]; then
+sed "s|vuln|$(sed_escape "$url")|" poc.html > vuln.html
 echo -e -n ${CP}"[+] POC Saved As Vuln.html"
-rm temp.txt
-cat poc.html | sed "s|vuln|$url|" >> vuln.html
+else
+echo -e -n ${RED}"[ X ] POC File Not Found! Exiting"
+exit 1
+fi
 sleep 1
-              exit
-     fi
+exit 0
+fi
 
 else
-
 
 echo -e -n ${CP}"\n[ X ] $url ${CG}NOT VULNERABLE "
 fi
@@ -82,41 +130,42 @@ function mul_url(){
 clear
 banner
 echo -e -n ${CP}"\n[+] Enter path of lists (e.g http|https://target.com/) : "
-read  urls
-for sanga in $(cat $urls);
-do
-res=$(curl -s -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/81.0" --connect-timeout 5 --head $sanga )
-echo "$res" >> temp.txt
+read urls
 
-sami=$(cat temp.txt | egrep -w 'X-Frame-Options|Content-Security-Policy|x-frame-options|content-security-policy:' )
-
-if [[ $sami = '' ]];
-then
-
-
-
-echo -e -n ${BLUE2}"\n[ ✔ ] ${CG}$sanga ${RED}VULNERABLE \n" 
-echo "$sanga" >> vulnerable_urls.txt
-else
-
-echo -e -n ${CP}"\n[ X ] ${NC}$sanga ${YELLOW}NOT VULNERABLE "
+if [ ! -f "$urls" ]; then
+echo -e -n ${RED}"\n[ X ] List File Not Found! Exiting"
+exit 1
 fi
 
-done
-rm temp.txt
+# Clear any previous results for this run.
+: > vulnerable_urls.txt
+
+while IFS= read -r sanga || [ -n "$sanga" ]; do
+[ -z "$sanga" ] && continue
+
+check_clickjacking "$sanga"
+result=$?
+
+if [ "$result" -eq 2 ]; then
+echo -e -n "\n[ ! ] ${NC}$sanga ${YELLOW}COULD NOT BE REACHED "
+elif [ "$result" -eq 0 ]; then
+echo -e -n ${BLUE2}"\n[ ✔ ] ${CG}$sanga ${RED}VULNERABLE \n"
+echo "$sanga" >> vulnerable_urls.txt
+else
+echo -e -n ${CP}"\n[ X ] ${NC}$sanga ${YELLOW}NOT VULNERABLE "
+fi
+done < "$urls"
+echo ""
 }
 trap ctrl_c INT
 ctrl_c() {
 clear
 echo -e ${RED}"[*] (Ctrl + C ) Detected, Trying To Exit... "
 echo -e ${RED}"[*] Stopping Services... "
-if [ -f temp.txt ]; then
-rm temp.txt
-fi
 sleep 1
 echo ""
 echo -e ${YELLOW}"[*] Thanks For Using CLICK-J1CK3R  :)"
-exit
+exit 0
 }
 
 menu()
@@ -130,13 +179,12 @@ echo -e "  ${NC}[${CG}"3"${NC}]${CNC} Exit"
 
 echo -n -e ${YELLOW}"\n[+] Select: "
         read redi_play
-                if [ $redi_play -eq 1 ]; then
-                        single_url
-                elif [ $redi_play -eq 2 ]; then
-                        mul_url
-                elif [ $redi_play -eq 3 ]; then
-                      exit
-                fi
+        case "$redi_play" in
+            1) single_url ;;
+            2) mul_url ;;
+            3) exit 0 ;;
+            *) echo -e "\n${RED}[ X ] Invalid selection"; sleep 1; menu ;;
+        esac
 }
 menu
 #Coded By Machine404! Don't copy this code without giving me credit~
