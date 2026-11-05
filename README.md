@@ -11,10 +11,19 @@
     
 # Features
     1. Scan Single Target With POC Open In Browser If Vulnerable Otherwise Not.
-    2. Scan Multiple Urls With One Click.
+    2. Scan Multiple Urls With One Click, With Concurrent Requests For Speed.
     3. 100% Easy To Use.
     4. More Features will Be Added IA.
-    
+
+# Multi-URL Scan Output
+    The Multiple Domains Scan asks for a concurrency level (default 10 if left
+    blank) and writes three report files after the scan completes:
+      - vulnerable_urls.txt  — one vulnerable URL per line (as before)
+      - results.csv          — url,status for every URL scanned
+      - results.json         — a JSON array of {"url": ..., "status": ...}
+                               (status is one of "vulnerable",
+                               "not_vulnerable", or "unreachable")
+
 # Note
     1. Make sure poc.html is placed in the same folder with clickjack.sh file.
     
